@@ -8,6 +8,7 @@ import gzip
 
 # delete later
 import pprint
+from ssl import ALERT_DESCRIPTION_BAD_CERTIFICATE_STATUS_RESPONSE
 
 HTTP_VER = 1.1
 # Copyright 2013 Abram Hindle, Eddie Antonio Santos
@@ -50,12 +51,11 @@ class MyWebServer(socketserver.BaseRequestHandler):
         if not self.is_valid_req_method(req_method):
             self.send_405()
             return
-        elif not self.is_valid_req_path(req_path):
+        elif not self.is_valid_req_dirpath(req_path):
             self.send_301(req_path)
             return
 
-        abs_req_path = self.get_abs_path_of(req_path)
-        if not os.path.exists(abs_req_path):
+        if not self.is_valid_path(req_path):
             self.send_404()
             return
 
@@ -65,6 +65,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         header_lines = []
         res_entity_body = ''
 
+        abs_req_path = self.get_abs_path_of(req_path)
         with open(abs_req_path, 'r') as f:
             ext = abs_req_path.split('.')[-1]
             res_entity_body = f.read()
@@ -118,6 +119,17 @@ class MyWebServer(socketserver.BaseRequestHandler):
 
         return response 
 
+    def get_abs_root_dir(self) -> str:
+        return os.path.join(os.path.abspath(os.path.dirname(__file__)), 'www')
+
+
+    def is_valid_path(self, path: str) -> str:
+        abs_path = self.get_abs_path_of(path)
+
+        norm_path = os.path.normpath(abs_path)
+        abs_root_dir = self.get_abs_root_dir()
+        return os.path.commonpath([norm_path, abs_root_dir]) == abs_root_dir and os.path.exists(abs_path)
+
 
     def get_abs_path_of(self, path: str) -> str:
         '''
@@ -125,8 +137,7 @@ class MyWebServer(socketserver.BaseRequestHandler):
         '''
         if path[-1] == '/':
             path += 'index.html'
-        abs_root_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'www')
-        return os.path.join(abs_root_dir, path[1:])
+        return os.path.join(self.get_abs_root_dir(), path[1:])
         
 
     def get_current_rfc_date_str(self) -> str:
@@ -138,7 +149,11 @@ class MyWebServer(socketserver.BaseRequestHandler):
         return True if req_method == 'GET' else False
 
     
-    def is_valid_req_path(self, req_path: str) -> bool:
+    def is_valid_req_dirpath(self, req_path: str) -> bool:
+        '''
+        Return True if the given path is a directory path and ends with /.
+        Otherwise, return False.
+        '''
         abs_path = self.get_abs_path_of(req_path)
 
         if os.path.isdir(abs_path) and req_path[-1] != '/':
